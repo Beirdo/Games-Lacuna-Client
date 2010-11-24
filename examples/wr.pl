@@ -9,18 +9,21 @@ use List::Util qw(min max sum);
 use Data::Dumper;
 use Getopt::Long qw(GetOptions);
 use AnyEvent;
+use POSIX qw(floor);
 
 use constant MINUTE => 60;
 
 our $TimePerIteration = 10;
 
-my $min_waste = 1000;
+my $high_water = 200;
+my $low_water  = 100;
 
 my $balanced = 0;
 GetOptions(
-        'i|interval=f' => \$TimePerIteration,
-        'b|balanced=i' => \$balanced,
-        'm|minwaste=i' => \$min_waste,
+        'i|interval=f'  => \$TimePerIteration,
+        'b|balanced=i'  => \$balanced,
+        'h|highwater=i' => \$high_water,
+        'l|lowwater=i'  => \$low_water,
         );
 $TimePerIteration = int($TimePerIteration * MINUTE);
 
@@ -130,15 +133,19 @@ sub update_wr {
     my $waste_per_hour = $wr_stat->{status}{body}{waste_hour};
     my $waste = $pstatus->{waste_stored};
 
-    if (not $waste or $waste < $min_waste) {
-        output("(virtually) no waste has accumulated, waiting");
+    if ($low_water >= $high_water) {
+        $high_water = $low_water + 1;
+    }
+
+    if (not $waste or $waste < $high_water) {
+        output("waste accumulated ($waste) below high water ($high_water), waiting");
         return 5*MINUTE;
     }
 
     my $sec_per_waste = $wr_stat->{recycle}{seconds_per_resource};
     die "seconds_per_resource not found" if not $sec_per_waste;
 
-    my $rec_waste = min($waste, $TimePerIteration / $sec_per_waste, $wr_stat->{recycle}{max_recycle});
+    my $rec_waste = min($waste - $low_water, $TimePerIteration / $sec_per_waste, $wr_stat->{recycle}{max_recycle});
 
     # yeah, I know this is a bit verbose.
     my $ore_c    = $pstatus->{ore_capacity};
@@ -168,20 +175,31 @@ sub update_wr {
 
 
     if (not $balanced) {
-        # otherwise, spend 100% on the lowest resource that won't go over capacity
-        if ($ore_s < $water_s && $ore_s < $energy_s && $ore_s + $rec_waste < $ore_c) {
-            # if ore is less than water and energy and we won't cap it
-            output('spending it all on ore');
-            $ore = $rec_waste;
+        my $max_s = max($water_s, $ore_s, $energy_s);
+        my $water_d  = $max_s - $water_s; 
+        my $ore_d    = $max_s - $ore_s;
+        my $energy_d = $max_s - $energy_s;
+        my $total_d  = $water_d + $ore_d + $energy_d;
+        my $prorate  = min($total_d, $rec_waste);
+
+        if ($total_d) {
+            $ore    = ($ore_d * $prorate) / $total_d;
+            $water  = ($water_d * $prorate) / $total_d;
+            $energy = ($energy_d * $prorate) / $total_d;
         }
-        if ($water_s < $ore_s && $water_s < $energy_s && $water_s + $rec_waste < $water_c) {
-            output('spending it all on water');
-            $water = $rec_waste;
+
+        $rec_waste -= ($ore + $water + $energy);
+        if ($rec_waste) {
+            $ore    += $rec_waste / 3;
+            $water  += $rec_waste / 3;
+            $energy += $rec_waste / 3;
         }
-        if ($energy_s < $water_s && $energy_s < $ore_s && $energy_s + $rec_waste < $energy_c) {
-            output('spending it all on energy');
-            $energy = $rec_waste;
-        }
+            
+        $ore    = floor($ore    + 0.5);
+        $water  = floor($water  + 0.5);
+        $energy = floor($energy + 0.5);
+
+        $rec_waste = $ore + $water + $energy;
     }
 
     if ($ore == 0 && $water == 0 && $energy == 0 ) {
@@ -196,7 +214,7 @@ sub update_wr {
     output("WARNING!!! WASTE RECYCLER NOT KEEPING PACE WITH WASTE PER HOUR!!!") if ((60 * 60) / $sec_per_waste < $waste_per_hour);
 
     # don't do anything if waste production is negative and will put below threshold
-    if ($waste - $rec_waste > $min_waste) {
+    if ($waste - $rec_waste >= $low_water - 3) {
         output(sprintf("RECYCLING %0d waste to ore=%0d, water=%0d, energy=%0d", $rec_waste, $ore, $water, $energy));
         eval {
             $wr->recycle(int($water), int($ore), int($energy), 0);
@@ -206,7 +224,7 @@ sub update_wr {
         return int($rec_waste*$sec_per_waste)+3;
     }
     else {
-        output("Choosing not to recycle right this moment. -- It would put us below $min_waste waste threshold.");
+        output("Choosing not to recycle right this moment. -- It ($rec_waste) would put us below $low_water waste threshold.");
         return 5*MINUTE;
     }
 
