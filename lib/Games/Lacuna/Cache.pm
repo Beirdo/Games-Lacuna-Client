@@ -1,9 +1,8 @@
 package Games::Lacuna::Cache;
-use utf8;
 use strict;
 use warnings;
 use Games::Lacuna::Client;
-use YAML::Any qw(LoadFile DumpFile);
+use YAML::XS qw(LoadFile DumpFile);
 use Data::Dumper;
 
 
@@ -18,7 +17,7 @@ sub new {
     my $refresh = $opt{'refresh'};
     $self->{'debug'} = $opt{'cache_debug'} || 0;
     $self->{'CACHE_FILE'} = $opt{'cache_file'} || "empire_cache2.dat";
-    $self->{'CACHE_TIME'} = $opt{'cache_time'} || 25*60;
+    $self->{'CACHE_TIME'} = $opt{'cache_time'} || 4*3600;
     #Ships move faster than buildings. *nod*
     $self->{'CACHE_TIME_SHIPS'} = $opt{'cache_time_ships'} || 10*60;
     # We cache building objects to make life easier later.
@@ -52,6 +51,7 @@ sub load_data {
         $self->refresh_data("empire");
     }
     $self->{'DATA'} = YAML::Any::LoadFile($self->{'CACHE_FILE'});
+    $self->debug( "Done loading Empire data... ");
 
 }
 
@@ -190,12 +190,16 @@ sub list_buildings_on_planet{
     if ($filters){
         foreach my $pattern (@$filters){
             foreach my $id (keys %$buildings){
-                #print "(searching planet $planet for $pattern ...)\n"; 
-                if ($buildings->{$id}->{'url'} =~ m|/$pattern|){
-                    #        print "(found $pattern ($_) ...)\n"; 
-                    $self->{'OBJECTS'}->{'buildings'}->{$id} =  $self->{'CLIENT'}->building(type => $pattern, id => $id); 
-                    push (@results, $id);
+                #$self->debug( "(searching planet $planet for $pattern ...)\n"); 
+                if ($buildings->{$id}->{'url'}){
+                    if ($buildings->{$id}->{'url'} =~ m|/$pattern|){
+                        #        print "(found $pattern ($_) ...)\n"; 
+                        $self->{'OBJECTS'}->{'buildings'}->{$id} =  $self->{'CLIENT'}->building(type => $pattern, id => $id); 
+                        push (@results, $id);
 
+                    }
+                }else{
+                    $self->debug("Building has id $id but no url?");
                 }
             }
         }
@@ -214,6 +218,7 @@ sub list_buildings_on_planet{
 sub refresh_data{
     my ($self, $key, $id) = @_;
     my $response;
+    $self->debug( "Refreshing data... ");
     if ($id){
         # It'll be a building or a planet, or ships.
         my $checked = $self->{'DATA'}->{$key}->{$id}->{'last_checked'};
@@ -282,17 +287,18 @@ sub refresh_data{
             $self->debug( "Not yet implemented!");
         }
     }
+    $self->debug( "Done refreshing data... ");
 
-    if ($response){
-        YAML::Any::DumpFile($self->{'CACHE_FILE'}, $self->{'DATA'});
-    }
+#    if ($response){
+#        YAML::Any::DumpFile($self->{'CACHE_FILE'}, $self->{'DATA'});
+#    }
 }
 
 sub cache_response {
     # TODO - refactor. This is a little ugly because of the 2 levels of
     # response 
     my ($self, $type, $response) = @_;
-    #print "Caching response:\n";
+    $self->debug( "Caching response:\n");
     #print Dumper($response);
     if ($response->{'status'}->{'empire'}){
         $self->{'DATA'}->{'empire'} = $response->{'status'}->{'empire'};
@@ -327,9 +333,11 @@ sub cache_response {
         }
     }elsif ($type eq "building"){
         my $id = $response->{'building'}->{'id'}; 
+        my $planet_id = $response->{'status'}->{'body'}->{'id'};
         $self->{'DATA'}->{'buildings'}->{$id} = $response->{'building'};
         $self->{'DATA'}->{'buildings'}->{$id}->{'response_type'} = "full";
         $self->{'DATA'}->{'buildings'}->{$id}->{'last_checked'} = time();
+        $self->{'DATA'}->{'buildings'}->{$id}->{'planet_id'} = $planet_id;;
         foreach my $section (grep (! /empire|status/, keys %{$response})){
             # Store top level sections like ships_docked, recycle, etc
             $self->{'DATA'}->{'buildings'}->{$id}->{$section} =
@@ -351,9 +359,12 @@ sub cache_response {
         #utf8::decode($self->{'DATA'}->{'bodies'}->{$_}->{'name'});
         #print "Encoded " . $self->{'DATA'}->{'empire'}->{'planets'}->{$_} .  "in planet data \n";
     #}
-    #my $fh = open(">:utf8",$self->{'CACHE_FILE'});
-    #YAML::Any::DumpFile($fh, $self->{'DATA'});
+    my $fh;
+    open $fh, "+>", $self->{'CACHE_FILE'} || die "Couldn't open file: $!";
+    YAML::Any::DumpFile($fh, $self->{'DATA'});
+    close $fh;
 
+    #YAML::Any::DumpFile($self->{'CACHE_FILE'}, $self->{'DATA'});
 }
 
 
@@ -378,7 +389,11 @@ sub extrapolate{
         };
         $data->{'last_extrapolated'} = time();
     }
-        YAML::Any::DumpFile($self->{'CACHE_FILE'}, $self->{'DATA'});
+    my $fh;
+    open $fh, "+>", $self->{'CACHE_FILE'} || die "Couldn't open file: $!";
+    YAML::Any::DumpFile($fh, $self->{'DATA'});
+    close $fh;
+
 
 }
 
@@ -423,7 +438,7 @@ sub list_trade_ships{
 
 sub resource_details{
     my ($self, $planet_id, $resource_type) = @_;
-
+ # Extrapolate first?
     my $breakdown = $self->{'DATA'}->{'planets'}->{$planet_id}->{'breakdowns'}->{$resource_type};
 
     if (! $breakdown ){
@@ -432,7 +447,7 @@ sub resource_details{
             my $obj = $self->get_building_object($buildings[0]);
             $self->{'SESSION_CALLS'} += 1;
             my $response = $obj->get_stored_resources();
-            $breakdown = $self->parse_resource_breakdown($response->{'resources'}, $resource_type); 
+            $breakdown = $self->parse_resource_breakdown($response->{'resources'}, $resource_type, $planet_id); 
 
         }
     }
@@ -441,7 +456,7 @@ sub resource_details{
 }
 
 sub parse_resource_breakdown{
-    my ($self, $data, $type) = @_;
+    my ($self, $data, $type, $planet_id) = @_; 
 
     my @foods = (
                  "algae",
@@ -490,11 +505,15 @@ sub parse_resource_breakdown{
                 "zircon",
                );
     foreach my $food( @foods){
-        $self->{'DATA'}->{'breakdowns'}->{'food'}->{$food} = $data->{$food};
+        $self->{'DATA'}->{'planets'}->{$planet_id}->{'breakdowns'}->{'food'}->{$food} = $data->{$food};
     }
     foreach my $ore( @ores){
-        $self->{'DATA'}->{'breakdowns'}->{'ore'}->{$ore} = $data->{$ore};
+        $self->{'DATA'}->{'planets'}->{$planet_id}->{'breakdowns'}->{'ore'}->{$ore} = $data->{$ore};
     }
+    my $fh;
+    open $fh, "+>", $self->{'CACHE_FILE'} || die "Couldn't open file: $!";
+    YAML::Any::DumpFile($fh, $self->{'DATA'});
+    close $fh;
 
 return $self->{'DATA'}->{'breakdowns'}->{$type};
 
