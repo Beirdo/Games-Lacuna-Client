@@ -40,6 +40,7 @@ our @BuildingTypes = (qw(
     GratchsGauntlet
     GreatBallOfJunk
     Grove
+    HallsOfVrbansk
     HydroCarbon
     InterDimensionalRift
     JunkHengeSculpture
