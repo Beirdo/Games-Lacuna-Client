@@ -150,12 +150,11 @@ sub stringify{
   if( $n == int $n ){
     return sprintf '%2i   ', $n;
   }else{
-    my $str = sprintf '%05.2f', $n;
+    my $str = sprintf '%5.2f', $n;
     if( $str =~ /\.00/ ){
       return sprintf '%2i   ', $n;
     }
     $str =~ s/0$/ /;
-    $str =~ s/^0/ /;
     return $str;
   }
 }
