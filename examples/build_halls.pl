@@ -9,7 +9,7 @@ use warnings;
 use FindBin;
 use Getopt::Long;
 use Data::Dumper;
-use List::Util qw(first min);
+use List::Util qw(first min max);
 
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
@@ -97,6 +97,8 @@ for my $planet_name (sort keys %planets) {
     }
 }
 
+my $built = 0;
+my $possible = 0;
 for my $i (0..$#recipes) {
     next if $opts{type} and not $build_types{$i};
 
@@ -124,8 +126,12 @@ for my $i (0..$#recipes) {
     }
 
     # Do builds
-    my $how_many = (@builds - ($opts{'use-last'} ? 0 : 1));
+    my $how_many = max(@builds - ($opts{'use-last'} ? 0 : 1), 0);
     $how_many = min($opts{max}, $how_many) if $opts{max};
+
+    $built += $how_many;
+    $possible += @builds;
+
     for (0 .. $how_many - 1) {
         my $build = $builds[$_];
         if ($opts{'dry-run'}) {
@@ -134,6 +140,20 @@ for my $i (0..$#recipes) {
             output("Building a Halls #$which on $build->{planet}\n");
             $build->{arch}->assemble_glyphs($build->{glyphs});
         }
+    }
+}
+
+
+if ($built) {
+    if ($built > $possible) {
+        my $diff = $possible - $built;
+        output("$diff more Halls are possible, specify --use-last if you want to build all possible Halls\n");
+    }
+} else {
+    if ($possible) {
+        output("No Halls built ($possible possible), specify --use-last if you want to build all possible Halls\n");
+    } else {
+        output("Not enough glyphs to build any Halls recipes, sorry\n");
     }
 }
 
