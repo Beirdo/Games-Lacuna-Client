@@ -72,7 +72,7 @@ print STDERR "\r".(' 'x20)."\r";
 my $sep = '+'.('-'x14).( ('+'.('-'x7))x5 )."+\n";
 
 print $sep;
-print "| glyph        |  min  | min_s |  avg  |  max  | count |\n";
+print "| glyph        |  #    |  min  | min_s |  avg  |  max  |\n";
 print $sep;
 
 my(@glyph,@totals);
@@ -88,16 +88,18 @@ for my $glyph ( keys %glyph_prices ){
   
   my $sum   = sum @prices;
   my $mean = $sum / @prices;
+  my $count = @prices;
   
-  push @glyph, [$glyph,$min,$min_s,$mean,$max,scalar @prices];
-  $totals[0] += $min;
-  $totals[1] += $min_s;
-  $totals[2] += $max;
-  $totals[3] += $mean;
+  push @glyph, [$glyph, $count, $min,$min_s,$mean,$max];
+  $totals[0] += $count;
+  $totals[1] += $min;
+  $totals[2] += $min_s;
+  $totals[3] += $max;
+  $totals[4] += $mean;
 }
 
 # sort glyphs by their minimum price
-@glyph = sort { $a->[1] <=> $b->[1] } @glyph;
+@glyph = sort { $a->[2] <=> $b->[2] } @glyph;
 
 # print the body of the table
 for my $arr ( @glyph ){
