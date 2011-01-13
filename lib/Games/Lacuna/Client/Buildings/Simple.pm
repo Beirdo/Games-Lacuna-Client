@@ -12,11 +12,11 @@ our @BuildingTypes = (qw(
     Algae
     AlgaePond
     Apple
+    AtmosphericEvaporator
     Bean
     Beeldeban
     Bread
     Burger
-    Capitol
     Cheese
     Chip
     Cider
@@ -29,29 +29,31 @@ our @BuildingTypes = (qw(
     Dairy
     Denton
     EnergyReserve
-    Entertainment
     Espionage
     EssentiaVein
     Fission
     Fusion
     GasGiantLab
     GasGiantPlatform
-    GeneticsLab
     Geo
     GeoThermalVent
+    GratchsGauntlet
+    GreatBallOfJunk
     Grove
     HydroCarbon
     InterDimensionalRift
+    JunkHengeSculpture
     KalavianRuins
+    KasternsKeep
     Lake
     Lagoon
     Lapis
     LapisForest
-    LibraryOfJith
     LuxuryHousing
     Malcud
     MalcudField
     MassadsHenge
+    MetalJunkArches
     Mine
     MunitionsLab
     NaturalSpring
@@ -59,21 +61,25 @@ our @BuildingTypes = (qw(
     OreRefinery
     Oversight
     Pancake
+    PantheonOfHagness
     Pie
     PilotTraining
     Potato
     Propulsion
+    PyramidJunkSculpture
     Ravine
     RockyOutcrop
     Sand
+    SAW
     Shake
     Singularity
     Soup
+    SpaceJunkPark
     Stockpile
     Syrup
-    TempleOfTheDrajilites
     TerraformingLab
     TerraformingPlatform
+    TheDillonForge
     University
     Volcano
     WasteEnergy
@@ -86,8 +92,6 @@ our @BuildingTypes = (qw(
     WaterStorage
     Wheat
   ),
-  'FoodReserve', # extended view method, but same interface as far as we are concerned
-  'OreStorage', # extended view method, but same interface as far as we are concerned
 );
 
 

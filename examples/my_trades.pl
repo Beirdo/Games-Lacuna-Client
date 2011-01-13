@@ -2,8 +2,17 @@
 
 use strict;
 use warnings;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 use List::Util            qw( first max );
+use Getopt::Long          (qw(GetOptions));
 use Games::Lacuna::Client ();
+
+my $planet_name;
+
+GetOptions(
+    'planet=s' => \$planet_name,
+);
 
 my $cfg_file = shift(@ARGV) || 'lacuna.yml';
 unless ( $cfg_file and -e $cfg_file ) {
@@ -15,6 +24,8 @@ my $client = Games::Lacuna::Client->new(
 	# debug    => 1,
 );
 
+my $trades_per_page = 25;
+
 # Load the planets
 my $empire  = $client->empire->get_status->{empire};
 my $planets = $empire->{planets};
@@ -24,6 +35,8 @@ my %my_trades;
 # Scan each planet
 foreach my $planet_id ( sort keys %$planets ) {
     my $name = $planets->{$planet_id};
+
+    next if defined $planet_name && $planet_name ne $name;
 
     # Load planet data
     my $planet    = $client->body( id => $planet_id );
@@ -44,22 +57,22 @@ foreach my $planet_id ( sort keys %$planets ) {
     
     
     if ($trade_id) {
-        my $trade = $client->building( id => $trade_id, type => 'Trade' );
+        my $trade_min = $client->building( id => $trade_id, type => 'Trade' );
         
-        my $trades = $trade->view_my_trades;
+        my $trades = get_trades( $trade_min );
         
-        if ( $trades->{trade_count} ) {
-            $my_trades{$name}{'Trade Ministry'} = $trades->{trades};
+        if ( @$trades ) {
+            $my_trades{$name}{'Trade Ministry'} = $trades;
         }
     }
     
     if ($transporter_id) {
         my $transporter = $client->building( id => $transporter_id, type => 'Transporter' );
         
-        my $trades = $transporter->view_my_trades;
+        my $trades = get_trades( $transporter );
         
-        if ( $trades->{trade_count} ) {
-            $my_trades{$name}{'Subspace Transporter'} = $trades->{trades};
+        if ( @$trades ) {
+            $my_trades{$name}{'Subspace Transporter'} = $trades;
         }
     }
 }
@@ -77,11 +90,37 @@ for my $name (sort keys %my_trades) {
         my $max_length = max map { length $_->{offer_description} } @trades;
         
         for my $trade (@trades) {
-            printf "Offering %-${max_length}s for %s\n",
+            printf "%s offered %-${max_length}s for %s\n",
+                $trade->{date_offered},
                 $trade->{offer_description},
                 $trade->{ask_description};
         }
         
         print "\n";
     }
+}
+
+sub get_trades {
+    my ( $building ) = @_;
+
+    my $trades = $building->view_my_trades;
+    my $count  = $trades->{trade_count};
+    
+    return [] if !$count;
+    
+    my $page = 1;
+    
+    my @trades = @{ $trades->{trades} };
+    
+    $count -= $trades_per_page;
+    
+    while ( $count > 0 ) {
+        $page++;
+        
+        push @trades, @{ $building->view_my_trades( $page )->{trades} };
+        
+        $count -= $trades_per_page;
+    }
+    
+    return \@trades;
 }

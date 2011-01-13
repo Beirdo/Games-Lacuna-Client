@@ -8,19 +8,10 @@ use Getopt::Long qw(GetOptions);
 use Data::Dumper;
 use Games::Lacuna::Client;
 use Games::Lacuna::Client::PrettyPrint;
+use Games::Lacuna::Client::Types ':list';
 use List::MoreUtils qw(any);
 
 $| = 1;
-
-my $cfg_file = shift(@ARGV) || 'lacuna.yml';
-unless ( $cfg_file and -e $cfg_file ) {
-	die "Did not provide a config file";
-}
-
-my $client = Games::Lacuna::Client->new(
-	cfg_file => $cfg_file,
-	# debug    => 1,
-);
 
 my $show_usage = 0;
 my $show_color = 0;
@@ -39,7 +30,7 @@ GetOptions(
     'filter=s'  => \@filters,
     'sort=s'    => \@sorts,
     'desc'      => \$sort_descending,
-    'max-pages' => \$max_pages
+    'max-pages=n' => \$max_pages
 );
 
 print << '__END_USAGE__' if $show_usage;
@@ -98,6 +89,16 @@ Example filter options:
    trade is included in the ratio calculation.
 __END_USAGE__
 exit(0) if $show_usage;
+
+my $cfg_file = shift(@ARGV) || 'lacuna.yml';
+unless ( $cfg_file and -e $cfg_file ) {
+	die "Did not provide a config file";
+}
+
+my $client = Games::Lacuna::Client->new(
+	cfg_file => $cfg_file,
+	# debug    => 1,
+);
 
 $Games::Lacuna::Client::PrettyPrint::ansi_color = $show_color;
 my $data = $client->empire->view_species_stats();
@@ -216,12 +217,4 @@ sub real_type {
     else {
         return $type;
     }
-}
-
-sub food_types {
-    return qw(algae apple bean beetle bread burger chip cheese cider corn fungus lapis meal milk pancake pie potato root shake soup syrup wheat);
-}
-
-sub ore_types {
-    return qw(anthracite bauxite beryl chalcopyrite chromite fluorite galena goethite gold gypsum halite kerogen magnetite methane monazite rutile sulfur trona uraninite zircon);
 }
