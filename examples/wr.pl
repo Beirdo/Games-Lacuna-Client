@@ -173,19 +173,30 @@ sub update_wr {
     my $water = 0;
     my $energy = 0;
 
+    # Normalize to % stored
+    my $ore_p    = 1.0 * $ore_s    / $ore_c;
+    my $water_p  = 1.0 * $water_s  / $water_c;
+    my $energy_p = 1.0 * $energy_s / $energy_c;
 
     if (not $balanced) {
-        my $max_s = max($water_s, $ore_s, $energy_s);
-        my $water_d  = $max_s - $water_s; 
-        my $ore_d    = $max_s - $ore_s;
-        my $energy_d = $max_s - $energy_s;
-        my $total_d  = $water_d + $ore_d + $energy_d;
-        my $prorate  = min($total_d, $rec_waste);
+        my $max_p     = max($water_p, $ore_p, $energy_p);
 
-        if ($total_d) {
-            $ore    = ($ore_d * $prorate) / $total_d;
-            $water  = ($water_d * $prorate) / $total_d;
-            $energy = ($energy_d * $prorate) / $total_d;
+	# Get the % stored required to become balanced
+        my $water_pd  = $max_p - $water_p; 
+        my $ore_pd    = $max_p - $ore_p;
+        my $energy_pd = $max_p - $energy_p;
+        my $total_pd  = $water_pd + $ore_pd + $energy_pd;
+
+        if ($total_pd) {
+            # Convert to % of total waste to balance % stored
+            my $water_r   = $water_pd  / $total_pd;
+            my $ore_r     = $ore_pd    / $total_pd;
+            my $energy_r  = $energy_pd / $total_pd;
+
+            # Convert to actual waste numbers
+            $ore    = $rec_waste * $ore_r;
+            $water  = $rec_waste * $water_r;
+            $energy = $rec_waste * $energy_r;
         }
 
         $rec_waste -= ($ore + $water + $energy);
@@ -199,7 +210,7 @@ sub update_wr {
         $water  = floor($water  + 0.5);
         $energy = floor($energy + 0.5);
 
-        $rec_waste = $ore + $water + $energy;
+        $rec_waste = min($ore + $water + $energy, $waste);
     }
 
     if ($ore == 0 && $water == 0 && $energy == 0 ) {
@@ -215,7 +226,7 @@ sub update_wr {
 
     # don't do anything if waste production is negative and will put below threshold
     if ($waste - $rec_waste >= $low_water - 3) {
-        output(sprintf("RECYCLING %0d waste to ore=%0d, water=%0d, energy=%0d", $rec_waste, $ore, $water, $energy));
+        output(sprintf("RECYCLING %0d of %0d waste to ore=%0d, water=%0d, energy=%0d", $rec_waste, $waste, $ore, $water, $energy));
         eval {
             $wr->recycle(int($water), int($ore), int($energy), 0);
         };
