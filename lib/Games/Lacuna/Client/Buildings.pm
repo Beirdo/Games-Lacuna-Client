@@ -12,25 +12,38 @@ require Games::Lacuna::Client::Buildings::Simple;
 
 our @BuildingTypes = (qw(
     Archaeology
+    Capitol
     Development
     Embassy
+    EnergyReserve
+    Entertainment
+    FoodReserve
     Intelligence
+    GeneticsLab
+    HallsOfVrbansk
+    LibraryOfJith
     MiningMinistry
     MissionCommand
     Network19
     Observatory
+    OreStorage
     Park
     PlanetaryCommand
     Security
     Shipyard
     SpacePort
+    SubspaceSupplyDepot
+    TempleOfTheDrajilites
+    ThemePark
     Trade
     Transporter
     WasteRecycling
   ),
 );
-eval join '',
-   map { "require Games::Lacuna::Client::Buildings::$_;" } @BuildingTypes;
+for my $building_type ( @BuildingTypes ){
+    eval "require Games::Lacuna::Client::Buildings::$building_type;";
+    die "Unable to load building type module $building_type: $@" if $@;
+}
 
 use Class::XSAccessor {
   getters => [qw(building_id)],
@@ -103,6 +116,7 @@ sub build {
 
 sub type_from_url {
   my $url = shift;
+  croak "URL is undefined" if not $url;
   $url =~ m{/([^/]+)$} or croak("Bad URL: '$url'");
   my $url_elem = $1;
   my $type = type_for(__PACKAGE__, $url); # or croak("Unhandled URL: '$url'");
