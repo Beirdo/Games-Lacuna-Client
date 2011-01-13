@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use 5.010000;
+use feature ':5.10';
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
@@ -16,31 +17,41 @@ our $TimePerIteration = 10;
 
 my $min_waste = 1000;
 
-my $balanced = 0;
+my $balanced = my $rate = 0;
+my ($water_perc, $energy_perc, $ore_perc) = (0, 0, 0);
 GetOptions(
         'i|interval=f' => \$TimePerIteration,
-        'b|balanced=i' => \$balanced,
+        'b|balanced!'  => \$balanced,
+        'r|rate!'      => \$rate,
         'm|minwaste=i' => \$min_waste,
+        'water=i'      => \$water_perc,
+        'ore=i'        => \$ore_perc,
+        'energy=i'     => \$energy_perc,
         );
 $TimePerIteration = int($TimePerIteration * MINUTE);
 
-my $config_file = shift @ARGV;
+if ($water_perc or $ore_perc or $energy_perc) {
+	die "Percentages need to add up to 100\n" if $water_perc + $ore_perc + $energy_perc != 100;
+	for ($water_perc, $ore_perc, $energy_perc) { $_ = $_ / 100; }
+}
+
+my $config_file = shift @ARGV || 'lacuna.yml';
 usage() if not defined $config_file or not -e $config_file;
 
 my $client = Games::Lacuna::Client->new(
         cfg_file => $config_file,
         #debug => 1,
-        );
+);
 
 my $program_exit = AnyEvent->condvar;
 my $int_watcher = AnyEvent->signal(
-        signal => "INT",
-        cb => sub {
+    signal => "INT",
+    cb => sub {
         output("Interrupted!");
         undef $client;
         exit(1);
-        }
-        );
+    }
+);
 
 #my $res = $client->alliance->find("The Understanding");
 #my $id = $res->{alliances}->[0]->{id};
@@ -48,34 +59,34 @@ my $int_watcher = AnyEvent->signal(
 my $empire = $client->empire;
 my $estatus = $empire->get_status->{empire};
 my %planets_by_name = map { ($estatus->{planets}->{$_} => $client->body(id => $_)) }
-keys %{$estatus->{planets}};
+    keys %{$estatus->{planets}};
 # Beware. I think these might contain asteroids, too.
 # TODO: The body status has a 'type' field that should be listed as 'habitable planet'
 
 
 my @wrs;
 foreach my $planet (values %planets_by_name) {
-    my %buildings = %{ $planet->get_buildings->{buildings} };
+    my $buildings = $planet->get_buildings->{buildings};
 
-    my @waste_ids = grep {$buildings{$_}{name} eq 'Waste Recycling Center'}
-    keys %buildings;
+    my @waste_ids = grep { $buildings->{$_}{name} eq 'Waste Recycling Center' }
+    keys %$buildings;
     push @wrs, map  { $client->building(type => 'WasteRecycling', id => $_) } @waste_ids;
 }
 
 my @wr_handlers;
 my @wr_timers;
-foreach my $iwr (0..$#wrs) {
+foreach my $iwr (0 .. $#wrs) {
     my $wr = $wrs[$iwr];
     push @wr_handlers, sub {
         my $wait_sec = update_wr($wr, $iwr);
         return if not $wait_sec;
         $wr_timers[$iwr] = AnyEvent->timer(
-                after => $wait_sec,
-                cb    => sub {
-                output("Waited for $wait_sec on WR $iwr");
+            after => $wait_sec,
+            cb    => sub {
+                output("Waited for $wait_sec on WR @{[ $wr->view()->{status}{body}{name} ]} [$iwr]");
                 $wr_handlers[$iwr]->()
-                },
-                );
+            },
+        );
     };
 }
 
@@ -118,6 +129,7 @@ sub update_wr {
 
     output("checking WR stats for WR $iwr");
     my $wr_stat = $wr->view;
+    output("WR $iwr: $wr_stat->{status}{body}{name}");
 
     my $busy_seconds = $wr_stat->{building}{work}{seconds_remaining};
     if ($busy_seconds) {
@@ -127,12 +139,12 @@ sub update_wr {
 
     output("Checking resource stats");
     my $pstatus = $wr_stat->{status}{body} or die "Could not get planet status via \$struct->{status}{body}: " . Dumper($wr_stat);
-    my $waste_per_hour = $wr_stat->{status}{body}{waste_hour};
+    my $waste_per_hour = $pstatus->{waste_hour};
     my $waste = $pstatus->{waste_stored};
 
     if (not $waste or $waste < $min_waste) {
         output("(virtually) no waste has accumulated, waiting");
-        return 5*MINUTE;
+        return $TimePerIteration;
     }
 
     my $sec_per_waste = $wr_stat->{recycle}{seconds_per_resource};
@@ -148,6 +160,10 @@ sub update_wr {
     my $ore_s    = $pstatus->{ore_stored};
     my $water_s  = $pstatus->{water_stored};
     my $energy_s = $pstatus->{energy_stored};
+
+    my $ore_r    = $pstatus->{ore_hour};
+    my $water_r  = $pstatus->{water_hour};
+    my $energy_r = $pstatus->{energy_hour};
 
     # produce boolean = capacity > stored + 1
     my $produce_ore    = $ore_c > $ore_s+1;
@@ -166,8 +182,32 @@ sub update_wr {
     my $water = 0;
     my $energy = 0;
 
-
-    if (not $balanced) {
+    if ( $rate ) {
+        # get the name of our resource with the lowest production
+        my ($resource) = sort { $pstatus->{"${a}_hour"} <=> $pstatus->{"${b}_hour"} } qw( ore water energy );
+        given ($resource) {
+            when ('ore') {
+                output('spending it all on ore');
+                $ore = $rec_waste;
+            }
+            when ('water') {
+                output('spending it all on water');
+                $water = $rec_waste;
+            }
+            when ('energy') {
+                output('spending it all on energy');
+                $energy = $rec_waste;
+            }
+        }
+    }
+    elsif ( $balanced ) {
+        # if balanced is set, just divide evenly
+        output('spending as evenly as possible');
+        $ore    = $rec_waste * (1 / $produce_count) if $produce_ore;
+        $water  = $rec_waste * (1 / $produce_count) if $produce_water;
+        $energy = $rec_waste * (1 / $produce_count) if $produce_energy;
+    }
+    else {
         # otherwise, spend 100% on the lowest resource that won't go over capacity
         if ($ore_s < $water_s && $ore_s < $energy_s && $ore_s + $rec_waste < $ore_c) {
             # if ore is less than water and energy and we won't cap it
@@ -184,13 +224,6 @@ sub update_wr {
         }
     }
 
-    if ($ore == 0 && $water == 0 && $energy == 0 ) {
-        # if balanced is set, just divide evenly
-        output('spending as evenly as possible');
-        $ore    = $rec_waste * (1 / $produce_count) if $produce_ore;
-        $water  = $rec_waste * (1 / $produce_count) if $produce_water;
-        $energy = $rec_waste * (1 / $produce_count) if $produce_energy;
-    }
 
     # TODO warn if we aren't keeping pace
     output("WARNING!!! WASTE RECYCLER NOT KEEPING PACE WITH WASTE PER HOUR!!!") if ((60 * 60) / $sec_per_waste < $waste_per_hour);
@@ -201,13 +234,13 @@ sub update_wr {
         eval {
             $wr->recycle(int($water), int($ore), int($energy), 0);
         };
-        output("Recycling failed: $@"), return(1*MINUTE) if $@;
+        output("Recycling failed: $@"), return($TimePerIteration) if $@;
         output("Waiting for recycling job to finish");
         return int($rec_waste*$sec_per_waste)+3;
     }
     else {
         output("Choosing not to recycle right this moment. -- It would put us below $min_waste waste threshold.");
-        return 5*MINUTE;
+        return $TimePerIteration;
     }
 
 }

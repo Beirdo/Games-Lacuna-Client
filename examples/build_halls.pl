@@ -143,18 +143,13 @@ for my $i (0..$#recipes) {
     }
 }
 
-
-if ($built) {
-    if ($built > $possible) {
-        my $diff = $possible - $built;
-        output("$diff more Halls are possible, specify --use-last if you want to build all possible Halls\n");
-    }
+if ($built > $possible) {
+    my $diff = $possible - $built;
+    output("$diff more Halls are possible, specify --use-last if you want to build all possible Halls\n");
+} elsif($possible and !$built) {
+    output("No Halls built ($possible possible), specify --use-last if you want to build all possible Halls\n");
 } else {
-    if ($possible) {
-        output("No Halls built ($possible possible), specify --use-last if you want to build all possible Halls\n");
-    } else {
-        output("Not enough glyphs to build any Halls recipes, sorry\n");
-    }
+    output("Not enough glyphs to build any Halls recipes, sorry\n");
 }
 
 sub normalize_planet {

@@ -64,23 +64,6 @@ use Data::Dumper;
             }
         }
 
-        # Build more probes if directed
-        my (@shipyards) = $gov->find_buildings('Shipyard');
-        my $build_probes = $config->{build_probes} || 0;
-        my $probes_to_build = $build_probes - scalar @all_probes;
-        trace(sprintf("Found %d probes, configured to build if less than %d found.",scalar @all_probes,$build_probes));
-        while ($probes_to_build > 0) {
-            eval {
-                $shipyards[0]->build_ship('probe');
-                action("Building new probe");
-                $probes_to_build--;
-            };
-            if ($@) {
-                $probes_to_build = 0; # Stop trying...
-                warning("Unable to build probe: $@");
-            }
-        }
-
         $gov->{_observatory_plugin}{ports}{$pid} = {
             ports => \@spaceports,
             docked => \@ships,
