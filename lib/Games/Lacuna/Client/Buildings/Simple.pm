@@ -6,7 +6,7 @@ use Carp 'croak';
 
 use Games::Lacuna::Client;
 use Games::Lacuna::Client::Module;
-use Class::MOP;
+use Moose;
 
 our @BuildingTypes = (qw(
     Algae
@@ -15,6 +15,7 @@ our @BuildingTypes = (qw(
     AtmosphericEvaporator
     Bean
     Beeldeban
+    BeeldebanNest
     Bread
     Burger
     Cheese
@@ -40,6 +41,7 @@ our @BuildingTypes = (qw(
     GratchsGauntlet
     GreatBallOfJunk
     Grove
+    HallsOfVrbansk
     HydroCarbon
     InterDimensionalRift
     JunkHengeSculpture
@@ -101,7 +103,7 @@ sub init {
   my $class = shift;
   foreach my $type (@BuildingTypes) {
     my $class_name = "Games::Lacuna::Client::Buildings::$type";
-    Class::MOP::Class->create(
+    Moose::Meta::Class->create(
       $class_name => (
         superclasses => ['Games::Lacuna::Client::Buildings'],
       )
