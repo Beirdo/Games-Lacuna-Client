@@ -25,11 +25,10 @@ our @BuildingTypes = (qw(
     CloakingLab
     Corn
     CornMeal
-    Crater
     CrashedShipSite
+    Crater
     Dairy
     Denton
-    EnergyReserve
     Espionage
     EssentiaVein
     Fission
@@ -47,8 +46,8 @@ our @BuildingTypes = (qw(
     JunkHengeSculpture
     KalavianRuins
     KasternsKeep
-    Lake
     Lagoon
+    Lake
     Lapis
     LapisForest
     LuxuryHousing
@@ -78,15 +77,16 @@ our @BuildingTypes = (qw(
     Soup
     SpaceJunkPark
     Stockpile
+    SupplyPod
     Syrup
     TerraformingLab
     TerraformingPlatform
     TheDillonForge
     University
     Volcano
+    WasteDigester
     WasteEnergy
     WasteSequestration
-    WasteDigester
     WasteTreatment
     WaterProduction
     WaterPurification
